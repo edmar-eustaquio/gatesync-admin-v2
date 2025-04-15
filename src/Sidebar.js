@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { AiOutlineSchedule, AiOutlineBell, AiOutlineLogout, AiOutlineDashboard } from "react-icons/ai";
+import {
+  AiOutlineSchedule,
+  AiOutlineBell,
+  AiOutlineLogout,
+  AiOutlineDashboard,
+} from "react-icons/ai";
 import { db } from "./firebase"; // Import your Firestore configuration
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
@@ -17,13 +22,16 @@ const Sidebar = ({ setActivePage }) => {
     let scannedCount = 0;
 
     const unsubscribeEmergencies = onSnapshot(
-      query(collection(db, "Emergency"), where("status", "==", "Pending")),
+      query(collection(db, "emergencies"), where("status", "==", "Pending")),
       (querySnapshot) => {
         emergencyCount = querySnapshot.size;
         setPendingCount(emergencyCount + scannedCount); // Update the count
       },
       (error) => {
-        console.error("Error fetching pending requests from Emergency collection: ", error);
+        console.error(
+          "Error fetching pending requests from Emergency collection: ",
+          error
+        );
       }
     );
 
@@ -34,7 +42,10 @@ const Sidebar = ({ setActivePage }) => {
         setPendingCount(emergencyCount + scannedCount); // Update the count
       },
       (error) => {
-        console.error("Error fetching pending requests from scanned_ids collection: ", error);
+        console.error(
+          "Error fetching pending requests from scanned_ids collection: ",
+          error
+        );
       }
     );
 
