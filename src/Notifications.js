@@ -10,6 +10,7 @@ import {
   addDoc,
   query,
   serverTimestamp,
+  orderBy,
 } from "firebase/firestore";
 import { FaExclamationTriangle, FaIdCard } from "react-icons/fa";
 import { Timestamp } from "firebase/firestore";
@@ -100,14 +101,23 @@ const Notifications = () => {
 
         const scannedQuery = query(
           collection(db, "scanned_ids"),
-          where("status", "==", "Pending")
+          orderBy("timestamp", "desc")
+          // where("status", "==", "Pending")
         );
 
         unsubscribeScanned = onSnapshot(scannedQuery, (querySnapshot) => {
           let scannedList = [];
           let t = {};
+          let last = {};
           for (const dc of querySnapshot.docs) {
             const d = dc.data();
+
+            const v = last[d.idNumber] === undefined ? true : !last[d.idNumber];
+            last[d.idNumber] = v;
+            if (d.status !== "Pending") {
+              continue;
+            }
+
             let studentDetails = {}; // Get the student details from the map
             for (const key in temp) {
               const dc = temp[key];
@@ -121,6 +131,7 @@ const Notifications = () => {
             scannedList.push({
               id: dc.id,
               ...d,
+              isEntry: v,
               studentUsername: studentDetails.name || "Unknown Student",
               studentCourse: studentDetails.course || "Unknown Course",
               studentYearLevel:
@@ -204,12 +215,11 @@ const Notifications = () => {
     setIsModalOpen(true);
   };
 
-  // Open modal and update Scanned Entry status to "In Progress"
-  const handleOpenScannedModal = async (entry) => {
+  const handleOpenScannedModal = async (scan) => {
     if (selectingScan) {
       const data = {
         ...selectedScans,
-        [entry.id]: selectedScans[entry.id] ? false : true,
+        [scan.id]: selectedScans[scan.id] ? false : true,
       };
       setSelectedScans(data);
       let hasSelected = false;
@@ -231,24 +241,7 @@ const Notifications = () => {
       }
       return;
     }
-    // if (entry.status === "Pending") {
-    //   try {
-    //     const scannedRef = doc(db, "scanned_ids", entry.id);
-    //     await updateDoc(scannedRef, { status: "In Progress" });
-
-    //     setScannedEntries((prev) =>
-    //       prev.map((e) =>
-    //         e.id === entry.id ? { ...e, status: "In Progress" } : e
-    //       )
-    //     );
-    //   } catch (error) {
-    //     console.error(
-    //       "Error updating scanned entry status to In Progress:",
-    //       error
-    //     );
-    //   }
-    // }
-    setSelectedScannedEntry(entry);
+    setSelectedScannedEntry(scan);
     setIsModalOpen(true);
   };
 
@@ -312,7 +305,9 @@ const Notifications = () => {
           receiverId: parentId,
           title: "Emergency Status",
           emergencyId: id,
-          message: `${studentName} emergency request is ${accept ? "" : "un"}successful.`,
+          message: `${studentName} emergency request is ${
+            accept ? "" : "un"
+          }successful.`,
           route: "/(parenttabs)/notification",
           date: serverTimestamp(),
           prompt: false,
@@ -339,7 +334,9 @@ const Notifications = () => {
       }
     }
     if (!hasSelected) {
-      alert(`No selected scanned entry to ${accept ? "accept" : "decline"}!!!`);
+      alert(
+        `No selected scanned student to ${accept ? "accept" : "decline"}!!!`
+      );
       return;
     }
 
@@ -353,6 +350,7 @@ const Notifications = () => {
       await updateDoc(doc(db, "scanned_ids", id), { status });
       let studentId = null;
       let studentName = null;
+      let isEntry = true;
       for (const i in scannedEntries) {
         const st = scannedEntries[i];
         if (st.id === id) {
@@ -360,6 +358,7 @@ const Notifications = () => {
           if (student) {
             studentId = student.id;
             studentName = student.name;
+            isEntry = st.isEntry;
           }
           break;
         }
@@ -368,9 +367,11 @@ const Notifications = () => {
 
       addDoc(collection(db, "notifications"), {
         receiverId: studentId,
-        title: "Scan Entry Status",
+        title: "Scan Status",
         scanId: id,
-        message: `Your scan entry is ${accept ? "" : "un"}successful.`,
+        message: `Your scan ${isEntry ? "entry" : "exit"} is ${
+          accept ? "" : "un"
+        }successful.`,
         route: "/(studenttabs)/notification",
         date: serverTimestamp(),
         prompt: false,
@@ -382,9 +383,11 @@ const Notifications = () => {
       for (const parentId of parentIds)
         addDoc(collection(db, "notifications"), {
           receiverId: parentId,
-          title: "Scan Entry Status",
+          title: "Scan Status",
           scanId: id,
-          message: `${studentName} scan entry is ${accept ? "" : "un"}successful.`,
+          message: `${studentName} scan ${isEntry ? "entry" : "exit"} is ${
+            accept ? "" : "un"
+          }successful.`,
           route: "/(parenttabs)/notification",
           date: serverTimestamp(),
           prompt: false,
@@ -392,12 +395,6 @@ const Notifications = () => {
     }
     // onSelectAll(false);
   };
-
-  // // Open modal for scanned entry details
-  // const handleOpenScannedModal = (entry) => {
-  //   setSelectedScannedEntry(entry);
-  //   setIsModalOpen(true);
-  // };
 
   return (
     <div className="p-6 bg-gray-100 overflow-auto max-h-[95vh]">
@@ -540,39 +537,41 @@ const Notifications = () => {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {scannedEntries.length > 0 ? (
-          scannedEntries.map((entry) => (
+          scannedEntries.map((scan) => (
             <div
-              key={entry.id}
+              key={scan.id}
               className="bg-white shadow-lg rounded-lg p-5 transition transform hover:scale-105 cursor-pointer border-l-4 border-blue-500 hover:border-blue-700"
-              onClick={() => handleOpenScannedModal(entry)}
+              onClick={() => handleOpenScannedModal(scan)}
             >
               <div className="flex items-center gap-3">
                 <FaIdCard className="text-blue-500 text-xl" />
-                <h3 className="text-lg font-semibold">Scanned Entry</h3>
+                <h3 className="text-lg font-semibold">
+                  Scanned {scan.isEntry ? "Entry" : "Exit"}
+                </h3>
               </div>
               <p className="text-gray-600">
-                <strong>Student Name:</strong> {entry.studentUsername}
+                <strong>Student Name:</strong> {scan.studentUsername}
               </p>
               <p className="text-gray-600 mt-2">
-                <strong>ID Number:</strong> {entry.idNumber}
+                <strong>ID Number:</strong> {scan.idNumber}
               </p>
               <p className="text-gray-600">
-                <strong>Course:</strong> {entry.studentCourse}
+                <strong>Course:</strong> {scan.studentCourse}
               </p>
               <p className="text-gray-600">
-                <strong>Year Level:</strong> {entry.studentYearLevel}
+                <strong>Year Level:</strong> {scan.studentYearLevel}
               </p>
               <p className="text-sm text-gray-500">
                 <strong>Scan Time:</strong>{" "}
-                {entry.timestamp
-                  ? new Date(entry.timestamp).toLocaleString()
+                {scan.timestamp
+                  ? new Date(scan.timestamp).toLocaleString()
                   : "No timestamp"}
               </p>
 
               {selectingScan && (
                 <input
                   readOnly
-                  checked={selectedScans[entry.id]}
+                  checked={selectedScans[scan.id]}
                   className="peer absolute right-[10px] bottom-[10px] appearance-none w-4 h-4 border-2 border-cyan-500 rounded-full checked:bg-cyan-500 transition-colors
                     before:content-['✓'] before:text-white before:text-[10px] before:font-bold before:flex before:items-center before:justify-center
                     before:w-full before:h-full before:opacity-0 checked:before:opacity-100"
@@ -620,12 +619,12 @@ const Notifications = () => {
         </div>
       )}
 
-      {/* Modal for scanned entry details */}
       {isModalOpen && selectedScannedEntry && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
           <div className="bg-white p-8 rounded-lg shadow-xl w-96">
             <h3 className="text-xl font-semibold mb-3 text-gray-800">
-              🆔 Scanned Entry Details
+              🆔 Scanned {selectedScannedEntry.isEntry ? "Entry" : "Exit"}{" "}
+              Details
             </h3>
             <p className="text-gray-700">
               <strong>Student Name:</strong>{" "}
